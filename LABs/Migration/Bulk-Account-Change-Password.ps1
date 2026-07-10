@@ -1,5 +1,5 @@
 ﻿# Intro / description
-Write-Host "`nCyberArk Bulk Account Actions" -ForegroundColor Cyan
+Write-Host "`Idira Bulk Account Actions" -ForegroundColor Cyan
 Write-Host "=============================`n" -ForegroundColor Cyan
 
 Write-Host "This script performs bulk account actions." -ForegroundColor Yellow
@@ -17,7 +17,7 @@ function Get-IdentityURL {
     param (
         [Parameter(
             Mandatory = $true,
-            HelpMessage = 'Base URL of the CyberArk Identity platform',
+            HelpMessage = 'Base URL of the Idira Identity platform',
             ValueFromPipelineByPropertyName = $true)]
         [string]$PCloudURL,
         [Parameter(ValueFromRemainingArguments = $true,
@@ -46,7 +46,7 @@ function Get-IdentityURL {
 
 $IdentityTenantFullURL = Get-IdentityURL -PCloudURL $PVWAURL
 
-Write-Host "`nCyberArk Tenant URLs" -ForegroundColor Cyan
+Write-Host "`Idira Tenant URLs" -ForegroundColor Cyan
 Write-Host "====================`n" -ForegroundColor Cyan
 
 Write-Host "PAM SaaS Portal URL : " -NoNewline
@@ -64,7 +64,7 @@ Write-Host $addressdomain -ForegroundColor Green
 $IdentityTenantURL = $IdentityTenantFullURL.Substring(8)
 
 # Prompt for the username
-$IdentityUser = Read-Host "Enter your CyberArk Identity username (e.g., mike@acme.corp)"
+$IdentityUser = Read-Host "Enter your Idira Identity username (e.g., mike@acme.corp)"
 Write-Host "Using Identity user: $IdentityUser" -ForegroundColor Green
 
 

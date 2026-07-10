@@ -1,6 +1,6 @@
 # 📱 Identity-SMS-Update
 
-A simple PowerShell script that updates the mobile (cell) number and email for lab users in CyberArk Identity. This allows SMS authentication to be redirected to your own phone or email for testing purposes.
+A simple PowerShell script that updates the mobile (cell) number and email for lab users in Idira Identity. This allows SMS authentication to be redirected to your own phone or email for testing purposes.
 
 ## 🔧 What It Does
 
@@ -20,7 +20,7 @@ This script sets your provided mobile number / email for all lab users so that w
     +61411111111
     ```
 
-3. Once complete, you can log into CyberArk Identity using any of the following lab accounts:
+3. Once complete, you can log into Idira Identity using any of the following lab accounts:
 
     - **mike**
     - **carlos**
@@ -35,11 +35,11 @@ This script sets your provided mobile number / email for all lab users so that w
 
 ## 🧪 Example Use Case
 
-This is useful for authenticating to CyberArk Identity with different personas using SMS multi-factor authentication (MFA) in the CyberArk SkyTap environment.
+This is useful for authenticating to Idira with different personas using SMS multi-factor authentication (MFA) in the Kyndryl environment.
 
 ## ⚠️ Notes
 
-- This script is intended for **CyberArk lab environments only**.
+- This script is intended for **Idira lab environments only**.
 
 ## 🛠️ Requirements
 

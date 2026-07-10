@@ -1,8 +1,8 @@
 function Show-Menu {
     Clear-Host
-    Write-Host "====================================" -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
     Write-Host " Palo Alto Networks University - Main Menu" -ForegroundColor Cyan
-    Write-Host "====================================" -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
     Write-Host "Version: v26.07.10.1" -ForegroundColor DarkMagenta
     Write-Host
     Write-Host "0. Create a Training user."

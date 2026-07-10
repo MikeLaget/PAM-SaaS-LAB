@@ -67,7 +67,7 @@ Function Get-IdentityURL($idURL) {
 # ==============================================================================
 # 2. DATA COLLECTION & VALIDATION
 # ==============================================================================
-Write-Host "--- CyberArk Tenant Initialization ---" -ForegroundColor Cyan
+Write-Host "--- Idira Tenant Initialization ---" -ForegroundColor Cyan
 
 # Username
 $UserPattern = '^tenantadmin@cyberark\.cloud\.[\w]+$'
@@ -178,7 +178,7 @@ Write-Host "`n[+] Tenant configuration saved to: $ExportPath" -ForegroundColor G
 # ==============================================================================
 # 3. AUTHENTICATION (ITERATIVE MFA FLOW)
 # ==============================================================================
-Write-Host "`n--- Authenticating to CyberArk Identity ---" -ForegroundColor Cyan
+Write-Host "`n--- Authenticating to Idira Identity ---" -ForegroundColor Cyan
 
 $RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
 $BaseHeaders = @{ "X-Idap-Native-Client" = "true" }
