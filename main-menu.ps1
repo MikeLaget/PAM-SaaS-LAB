@@ -1,9 +1,9 @@
 function Show-Menu {
     Clear-Host
     Write-Host "====================================" -ForegroundColor Cyan
-    Write-Host " CyberArk University - Main Menu" -ForegroundColor Cyan
+    Write-Host " Idira University - Main Menu" -ForegroundColor Cyan
     Write-Host "====================================" -ForegroundColor Cyan
-    Write-Host "Version: v26.03.18" -ForegroundColor DarkMagenta
+    Write-Host "Version: v26.07.10" -ForegroundColor DarkMagenta
     Write-Host
     Write-Host "0. Create a Training user."
     Write-Host "1. Set Mobile/Cell and Email for ACME LAB users"
