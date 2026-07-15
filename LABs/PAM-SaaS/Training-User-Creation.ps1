@@ -65,46 +65,100 @@ Function Get-IdentityURL($idURL) {
 }
 
 # ==============================================================================
-# 2. DATA COLLECTION & VALIDATION
+# 2. DATA COLLECTION & PRE-FLIGHT CHECKS
 # ==============================================================================
 Write-Host "--- Idira Tenant Initialization ---" -ForegroundColor Cyan
 
-# Username
+# 2a. Username
 $UserPattern = '^tenantadmin@cyberark\.cloud\.[\w]+$'
 do {
     $Username = Read-Host -Prompt "Enter Login Name (tenantadmin@cyberark.cloud.XXXXX)"
     if ($Username -notmatch $UserPattern) { Write-Host "Invalid format! Must be tenantadmin@cyberark.cloud.XXXXX" -ForegroundColor Red }
 } while ($Username -notmatch $UserPattern)
 
-# Password (Secure Loop using .NET class)
-$PasswordsMatch = $false
-while (-not $PasswordsMatch) {
-    $SecPass1 = Read-Host -Prompt "Enter password" -AsSecureString
-    $SecPass2 = Read-Host -Prompt "Confirm password" -AsSecureString
-
-    $Password  = [System.Net.NetworkCredential]::new("", $SecPass1).Password
-    $Password2 = [System.Net.NetworkCredential]::new("", $SecPass2).Password
-
-    if ($Password -eq $Password2 -and -not [string]::IsNullOrWhiteSpace($Password)) {
-        $PasswordsMatch = $true
-        Write-Host "[+] Passwords match." -ForegroundColor Green
-    } else {
-        Write-Host "[-] Passwords do not match or are blank. Try again." -ForegroundColor Red
-    }
-}
-
-# Subtenant
+# 2b. Subtenant
 $SubtenantPattern = '^[a-zA-Z0-9-]+$'
 do {
     $Subtenant = Read-Host -Prompt "Enter Subtenant (e.g., acme-lab-XXXXX)"
     if ($Subtenant -notmatch $SubtenantPattern) { Write-Host "Invalid format!" -ForegroundColor Red }
 } while ($Subtenant -notmatch $SubtenantPattern)
 
+# 2c. Resolve and Validate Identity URL 
 $PAMUrl = "https://${Subtenant}.cyberark.cloud/"
-
+Write-Host "[*] Resolving Identity URL for $PAMUrl..."
 $IdentityURL = Get-IdentityURL -idURL $PAMUrl
-$IdentityURL = "https://${IdentityURL}"
 
+if ($IdentityURL -match "^Error:") {
+    Write-Host "[-] Failed to reach the PAM URL. $IdentityURL" -ForegroundColor Red
+    Write-Host "[-] Please verify that the subtenant '$Subtenant' is correct and active." -ForegroundColor Yellow
+    exit
+}
+
+$IdentityURL = "https://${IdentityURL}"
+Write-Host "[+] Identity URL resolved: $IdentityURL" -ForegroundColor Green
+
+# Setup Authentication variables
+$RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
+$BaseHeaders = @{ "X-Idap-Native-Client" = "true" }
+$IdentityID = ($IdentityURL -replace "https://", "").Split(".")[0]
+
+$IsAuthenticated = $false
+$SessionId = $null
+$MechanismId_Mfa = $null
+$Password = $null
+
+# 2d. Password Validation Loop (Verifies directly against the Identity API)
+while (-not $IsAuthenticated) {
+    $SecPass1 = Read-Host -Prompt "Enter password" -AsSecureString
+    $SecPass2 = Read-Host -Prompt "Confirm password" -AsSecureString
+
+    $PasswordTest  = [System.Net.NetworkCredential]::new("", $SecPass1).Password
+    $PasswordTest2 = [System.Net.NetworkCredential]::new("", $SecPass2).Password
+
+    if ($PasswordTest -eq $PasswordTest2 -and -not [string]::IsNullOrWhiteSpace($PasswordTest)) {
+        Write-Host "[*] Verifying credentials with CyberArk Identity..." -ForegroundColor Cyan
+
+        $bodyStart = @{ TenantId = $IdentityID; Version = "1.0"; User = $Username } | ConvertTo-Json -Compress
+        try {
+            $resStart = Invoke-RestMethod -Uri "$IdentityURL/Security/StartAuthentication" -Headers $BaseHeaders -Body $bodyStart @RestArgs
+
+            if ($resStart.Success -and $resStart.Result.Challenges) {
+                $SessionId = $resStart.Result.SessionId
+                $MechanismId_Pwd = $resStart.Result.Challenges[0].Mechanisms[0].MechanismId
+                $MechanismId_Mfa = $resStart.Result.Challenges[1].Mechanisms[0].MechanismId
+
+                $bodyPwd = @{
+                    TenantId    = $IdentityID
+                    SessionId   = $SessionId
+                    MechanismId = $MechanismId_Pwd
+                    Action      = "Answer"
+                    Answer      = $PasswordTest
+                } | ConvertTo-Json -Compress
+
+                $resPwd = Invoke-RestMethod -Uri "$IdentityURL/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $bodyPwd @RestArgs
+
+                if ($resPwd.Success -and $resPwd.Result.Summary -ne "LoginFailed") {
+                    Write-Host "[+] Password verified successfully!" -ForegroundColor Green
+                    $Password = $PasswordTest # Lock in the valid password
+                    $IsAuthenticated = $true
+                } else {
+                    Write-Host "[-] Incorrect password. Please try again." -ForegroundColor Red
+                }
+            } else {
+                Write-Host "[-] Failed to start authentication. Check your username/tenant." -ForegroundColor Red
+            }
+        } catch {
+            Write-Host "[-] API Connection error: $_" -ForegroundColor Red
+            Write-Host "[-] Will prompt for password again..." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[-] Passwords do not match or are blank. Try again." -ForegroundColor Red
+    }
+}
+
+# ==============================================================================
+# 3. GENERATE USERS & EXPORT CSV
+# ==============================================================================
 # Generate Training & Trainer Info
 $TrainingUser = "training-support@" + $Username.Split('@')[1]
 $TrainingPwd  = Get-RandomPassword
@@ -176,52 +230,11 @@ $ExportPath = Join-Path -Path "$HOME\Desktop" -ChildPath "TenantAdmin.csv"
 Write-Host "`n[+] Tenant configuration saved to: $ExportPath" -ForegroundColor Green
 
 # ==============================================================================
-# 3. AUTHENTICATION (ITERATIVE MFA FLOW)
+# 4. AUTHENTICATION (FINISH MFA FLOW)
 # ==============================================================================
-Write-Host "`n--- Authenticating to Idira Identity ---" -ForegroundColor Cyan
-
-$RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
-$BaseHeaders = @{ "X-Idap-Native-Client" = "true" }
-$IdentityID = ($IdentityURL -replace "https://", "").Split(".")[0]
-
-Write-Host "[*] Starting authentication process..."
-$bodyStart = @{ 
-    TenantId = $IdentityID
-    Version  = "1.0"
-    User     = $Username 
-} | ConvertTo-Json -Compress
-
-$resStart = Invoke-RestMethod -Uri "$IdentityURL/Security/StartAuthentication" -Headers $BaseHeaders -Body $bodyStart @RestArgs
-
-if (-not $resStart.Success -or -not $resStart.Result.Challenges) {
-    Write-Error "Failed to start authentication or no challenges returned."
-    exit
-}
-
-$SessionId = $resStart.Result.SessionId
-
-# Capture the mechanism IDs for the challenges up front
-$MechanismId_Pwd = $resStart.Result.Challenges[0].Mechanisms[0].MechanismId
-$MechanismId_Mfa = $resStart.Result.Challenges[1].Mechanisms[0].MechanismId
-
-Write-Host "[*] Submitting password to Identity..."
-$bodyPwd = @{
-    TenantId    = $IdentityID
-    SessionId   = $SessionId
-    MechanismId = $MechanismId_Pwd
-    Action      = "Answer"
-    Answer      = $Password
-} | ConvertTo-Json -Compress
-
-$resPwd = Invoke-RestMethod -Uri "$IdentityURL/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $bodyPwd @RestArgs
-
-if (-not $resPwd.Success -or $resPwd.Result.Summary -eq "LoginFailed") {
-    Write-Error "Authentication failed: Incorrect password."
-    exit
-}
+Write-Host "`n--- Triggering MFA for Identity ---" -ForegroundColor Cyan
 
 # Auth Step 3: Trigger MFA (OOB)
-Write-Host "[*] Triggering MFA Challenge..."
 $bodyMfa = @{
     TenantID    = $IdentityID
     SessionId   = $SessionId
@@ -259,7 +272,7 @@ if ($pollResponse.Success -and -not [string]::IsNullOrEmpty($pollResponse.Result
 }
 
 # ==============================================================================
-# 4. ENVIRONMENT SETUP: USER & SAFE MASTER ROLE
+# 5. ENVIRONMENT SETUP: USER & SAFE MASTER ROLE
 # ==============================================================================
 Write-Host "`n--- Provisioning the Training Account(s) ---" -ForegroundColor Cyan
 
@@ -308,7 +321,7 @@ if (-not [string]::IsNullOrWhiteSpace($RoleID)) {
     } else {
         Write-Host "[-] Failed to create role: $($res.Message)" -ForegroundColor Red
     }
-    
+
     Start-Sleep -Seconds 3 # Give Identity backend a moment to sync
 }
 
@@ -326,7 +339,7 @@ if (-not [string]::IsNullOrWhiteSpace($RoleID) -and $CreatedUserUuids.Count -gt 
 }
 
 # ==============================================================================
-# 5. ASSIGN PRIVILEGE CLOUD ADMINISTRATORS ROLE
+# 6. ASSIGN PRIVILEGE CLOUD ADMINISTRATORS ROLE
 # ==============================================================================
 Write-Host "`n--- Assigning Privilege Cloud Administrators Role ---" -ForegroundColor Cyan
 
