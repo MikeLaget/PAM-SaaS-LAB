@@ -1,8 +1,18 @@
 # ==============================================================================
-# Training support account creation v26-07-15
+# Training support account creation v26-07-22
+# ==============================================================================
+
 # ==============================================================================
 # 1. HELPER FUNCTIONS
 # ==============================================================================
+$ErrorLogPath = Join-Path -Path "$HOME\Desktop" -ChildPath "TenantAdmin_Error.log"
+
+function Write-ErrorLog {
+    param ([string]$Message)
+    $Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    "$Timestamp - ERROR: $Message" | Out-File -FilePath $ErrorLogPath -Append
+}
+
 function Get-RandomPassword {
     [CmdletBinding()]
     Param([int]$Length = 20)
@@ -72,18 +82,36 @@ Function Get-IdentityURL($idURL) {
 Write-Host "--- Idira Tenant Initialization ---" -ForegroundColor Cyan
 
 # 2a. Username
-$UserPattern = '^tenantadmin@cyberark\.cloud\.[\w]+$'
+$validUser = $false
 do {
-    $Username = Read-Host -Prompt "Enter Login Name (tenantadmin@cyberark.cloud.XXXXX)"
-    if ($Username -notmatch $UserPattern) { Write-Host "Invalid format! Must be tenantadmin@cyberark.cloud.XXXXX" -ForegroundColor Red }
-} while ($Username -notmatch $UserPattern)
+    $Username = Read-Host -Prompt "Enter Login Name (e.g., tenantadmin@cyberark.cloud.12345)"
+    
+    if ($Username -match 'X{3,}') { 
+        Write-Host "Please replace the 'X's with your actual 3 to 6 digit tenant suffix." -ForegroundColor Yellow
+        Write-ErrorLog "User entered literal 'X's in username: $Username" 
+    } elseif ($Username -notmatch '^tenantadmin@cyberark\.cloud\.[\w-]*\d{3,6}$') { 
+        Write-Host "Invalid format! Must be tenantadmin@cyberark.cloud.<suffix> (ending in 3 to 6 digits)" -ForegroundColor Red
+        Write-ErrorLog "Invalid username format provided: $Username" 
+    } else {
+        $validUser = $true
+    }
+} until ($validUser)
 
 # 2b. Subtenant
-$SubtenantPattern = '^[a-zA-Z0-9-]+$'
+$validSub = $false
 do {
-    $Subtenant = Read-Host -Prompt "Enter Subtenant (e.g., acme-lab-XXXXX)"
-    if ($Subtenant -notmatch $SubtenantPattern) { Write-Host "Invalid format!" -ForegroundColor Red }
-} while ($Subtenant -notmatch $SubtenantPattern)
+    $Subtenant = Read-Host -Prompt "Enter Subtenant (e.g., acme-lab-12345)"
+    
+    if ($Subtenant -match 'X{3,}') { 
+        Write-Host "Please replace the 'X's with your actual 3 to 6 digit tenant suffix." -ForegroundColor Yellow
+        Write-ErrorLog "User entered literal 'X's in subtenant: $Subtenant" 
+    } elseif ($Subtenant -notmatch '^[a-zA-Z0-9-]+?\d{3,6}$') { 
+        Write-Host "Invalid format! Subtenant should contain alphanumeric characters/hyphens and end with 3 to 6 digits." -ForegroundColor Red 
+        Write-ErrorLog "Invalid subtenant format provided: $Subtenant" 
+    } else {
+        $validSub = $true
+    }
+} until ($validSub)
 
 # 2c. Resolve and Validate Identity URL 
 $PAMUrl = "https://${Subtenant}.cyberark.cloud/"
@@ -93,6 +121,7 @@ $IdentityURL = Get-IdentityURL -idURL $PAMUrl
 if ($IdentityURL -match "^Error:") {
     Write-Host "[-] Failed to reach the PAM URL. $IdentityURL" -ForegroundColor Red
     Write-Host "[-] Please verify that the subtenant '$Subtenant' is correct and active." -ForegroundColor Yellow
+    Write-ErrorLog "Failed to reach PAM URL: $IdentityURL for subtenant $Subtenant"
     exit
 }
 
@@ -118,7 +147,7 @@ while (-not $IsAuthenticated) {
     $PasswordTest2 = [System.Net.NetworkCredential]::new("", $SecPass2).Password
 
     if ($PasswordTest -eq $PasswordTest2 -and -not [string]::IsNullOrWhiteSpace($PasswordTest)) {
-        Write-Host "[*] Verifying credentials with CyberArk Identity..." -ForegroundColor Cyan
+        Write-Host "[*] Verifying credentials with Idira Identity..." -ForegroundColor Cyan
 
         $bodyStart = @{ TenantId = $IdentityID; Version = "1.0"; User = $Username } | ConvertTo-Json -Compress
         try {
@@ -145,13 +174,16 @@ while (-not $IsAuthenticated) {
                     $IsAuthenticated = $true
                 } else {
                     Write-Host "[-] Incorrect password. Please try again." -ForegroundColor Red
+                    Write-ErrorLog "Incorrect password attempt for user $Username"
                 }
             } else {
                 Write-Host "[-] Failed to start authentication. Check your username/tenant." -ForegroundColor Red
+                Write-ErrorLog "Failed to start authentication for user $Username"
             }
         } catch {
             Write-Host "[-] API Connection error: $_" -ForegroundColor Red
             Write-Host "[-] Will prompt for password again..." -ForegroundColor Yellow
+            Write-ErrorLog "API Connection error during auth: $_"
         }
     } else {
         Write-Host "[-] Passwords do not match or are blank. Try again." -ForegroundColor Red
@@ -206,6 +238,7 @@ while (-not $isValid) {
             $isValid = $true
         } catch {
             Write-Host "Invalid email format. Please enter a valid email address or press Enter for the default." -ForegroundColor Red
+            Write-ErrorLog "Invalid trainer email format entered: $InputEmail"
         }
     }
 }
@@ -227,7 +260,7 @@ if ($UsersToCreate.Count -gt 1) {
 
 # Export initial CSV to Desktop
 $ExportPath = Join-Path -Path "$HOME\Desktop" -ChildPath "TenantAdmin.csv"
-[PSCustomObject]$ExportObj | Export-Csv -Path $ExportPath -NoTypeInformation
+$ExportObj.GetEnumerator() | Select-Object @{Name="Field";Expression={$_.Name}}, Value | Export-Csv -Path $ExportPath -NoTypeInformation
 
 Write-Host "`n[+] Tenant configuration saved to: $ExportPath" -ForegroundColor Green
 
@@ -270,6 +303,7 @@ if ($pollResponse.Success -and -not [string]::IsNullOrEmpty($pollResponse.Result
     Write-Host "[+] Authentication Successful!" -ForegroundColor Green
 } else {
     Write-Error "Authentication failed: MFA approval failed or timed out."
+    Write-ErrorLog "Authentication failed: MFA approval failed or timed out."
     exit
 }
 
@@ -281,24 +315,38 @@ Write-Host "`n--- Provisioning the Training Account(s) ---" -ForegroundColor Cya
 $CreatedUserUuids = @()
 
 foreach ($u in $UsersToCreate) {
-    $body = @{
-        Name                    = $u.Name
-        Mail                    = $u.Mail
-        Password                = $u.Password
-        InEverybodyRole         = $true
-        InSysAdminRole          = $true  # Grants System Admin
-        ForcePasswordChangeNext = $false
-        SendEmailInvite         = $true
-        SendSmsInvite           = $false
-        PasswordNeverExpire     = $true
-    } | ConvertTo-Json -Depth 10
-
-    $res = Invoke-RestMethod -Uri "$IdentityURL/CDirectoryService/CreateUser" -Headers $BaseHeaders -Body $body @RestArgs
-    if ($res.success) {
-        $CreatedUserUuids += $res.Result
-        Write-Host "[+] User created: $($u.Name) ($($u.Mail))" -ForegroundColor Green
+    # Verify if the user already exists before attempting creation
+    $checkUserBody = @{ Script = "SELECT ID, Username FROM User WHERE Username = '$($u.Name)'" } | ConvertTo-Json
+    $checkUserRes = Invoke-RestMethod -Uri "$IdentityURL/Redrock/query" -Headers $BaseHeaders -Body $checkUserBody @RestArgs
+    
+    $existingUser = @($checkUserRes.Result.Results)
+    
+    if ($existingUser.Count -gt 0) {
+        $userId = $existingUser[0].Row.ID
+        $CreatedUserUuids += $userId
+        Write-Host "[i] Account already exists: $($u.Name). Skipping creation and using existing account." -ForegroundColor Cyan
     } else {
-        Write-Host "[-] Failed to create user $($u.Name): $($res.Message)" -ForegroundColor Red
+        # Create user
+        $body = @{
+            Name                    = $u.Name
+            Mail                    = $u.Mail
+            Password                = $u.Password
+            InEverybodyRole         = $true
+            InSysAdminRole          = $true  # Grants System Admin
+            ForcePasswordChangeNext = $false
+            SendEmailInvite         = $true
+            SendSmsInvite           = $false
+            PasswordNeverExpire     = $true
+        } | ConvertTo-Json -Depth 10
+
+        $res = Invoke-RestMethod -Uri "$IdentityURL/CDirectoryService/CreateUser" -Headers $BaseHeaders -Body $body @RestArgs
+        if ($res.success) {
+            $CreatedUserUuids += $res.Result
+            Write-Host "[+] User created: $($u.Name) ($($u.Mail))" -ForegroundColor Green
+        } else {
+            Write-Host "[-] Failed to create user $($u.Name): $($res.Message)" -ForegroundColor Red
+            Write-ErrorLog "Failed to create user $($u.Name): $($res.Message)"
+        }
     }
 }
 
@@ -307,12 +355,14 @@ $queryBody = @{ Script = "SELECT Role.Description, Role.ID, Role.Name FROM Role 
 $queryResponse = Invoke-RestMethod -Uri "$IdentityURL/Redrock/query" -Headers $BaseHeaders -Body $queryBody @RestArgs
 
 $RoleID = $null
-if ($queryResponse.Result.Results.Count -gt 0 -and $queryResponse.Result.Results[0].Entities.Count -gt 0) {
-    $RoleID = $queryResponse.Result.Results[0].Entities[0].Key
+$safeMasterResults = @($queryResponse.Result.Results)
+
+if ($safeMasterResults.Count -gt 0) {
+    $RoleID = $safeMasterResults[0].Row.ID
 }
 
 if (-not [string]::IsNullOrWhiteSpace($RoleID)) {
-    Write-Host "[+] Found existing Safe Master Role ID: $RoleID" -ForegroundColor Green
+    Write-Host "[i] Role already exists: Safe Master (No need to recreate)" -ForegroundColor Cyan
 } else {
     # Create Safe Master Role
     $body = @{ Name = "Safe Master"; Description = "Grant members permissions"; RoleType = "PrincipalList" } | ConvertTo-Json
@@ -322,6 +372,7 @@ if (-not [string]::IsNullOrWhiteSpace($RoleID)) {
         Write-Host "[+] Role created: Safe Master" -ForegroundColor Green
     } else {
         Write-Host "[-] Failed to create role: $($res.Message)" -ForegroundColor Red
+        Write-ErrorLog "Failed to create Safe Master role: $($res.Message)"
     }
 
     Start-Sleep -Seconds 3 # Give Identity backend a moment to sync
@@ -335,9 +386,11 @@ if (-not [string]::IsNullOrWhiteSpace($RoleID) -and $CreatedUserUuids.Count -gt 
         Write-Host "[+] User(s) added to Safe Master role!" -ForegroundColor Green 
     } else {
         Write-Host "[-] Failed to add user(s) to the Safe Master role." -ForegroundColor Red
+        Write-ErrorLog "Failed to add user(s) to the Safe Master role: $($res.Message)"
     }
 } else {
     Write-Host "[-] Role creation failed or no users to add." -ForegroundColor Red
+    Write-ErrorLog "Safe Master role creation failed or no users available to add."
 }
 
 # ==============================================================================
@@ -351,36 +404,58 @@ $response = Invoke-RestMethod -Uri "$IdentityURL/Redrock/query" -Headers $BaseHe
 
 # Extract the Role ID
 $PrivCloudAdmins = $null
-if ($response.Result.Results.Count -gt 0 -and $response.Result.Results[0].Entities.Count -gt 0) {
-    $PrivCloudAdmins = $response.Result.Results[0].Entities[0].Key
+$privCloudResults = @($response.Result.Results)
+
+if ($privCloudResults.Count -gt 0) {
+    $PrivCloudAdmins = $privCloudResults[0].Row.ID
 }
 
-if (-not [string]::IsNullOrWhiteSpace($PrivCloudAdmins) -and $CreatedUserUuids.Count -gt 0) {
-    Write-Host "[+] Found Privilege Cloud Admins Role ID: $PrivCloudAdmins" -ForegroundColor Green
+if (-not [string]::IsNullOrWhiteSpace($PrivCloudAdmins)) {
+    Write-Host "[i] Found Role: Privilege Cloud Administrators" -ForegroundColor Cyan
 
-    # Grant membership to all created users
-    $authBody = @{ Users = @{ Add = $CreatedUserUuids }; Name = $PrivCloudAdmins } | ConvertTo-Json -Depth 10
-    $response = Invoke-RestMethod -Uri "$IdentityURL/Roles/UpdateRole" -Headers $BaseHeaders -Body $authBody @RestArgs
+    # Verify we actually have users to add before sending the update
+    if ($null -ne $CreatedUserUuids -and $CreatedUserUuids.Count -gt 0) {
+        # Grant membership to all created users
+        $authBody = @{ Users = @{ Add = $CreatedUserUuids }; Name = $PrivCloudAdmins } | ConvertTo-Json -Depth 10
+        $updateResponse = Invoke-RestMethod -Uri "$IdentityURL/Roles/UpdateRole" -Headers $BaseHeaders -Body $authBody @RestArgs
 
-    if ($response.success) {
-        Write-Host "[+] User(s) successfully added to Privilege Cloud Administrators!" -ForegroundColor Green
+        if ($updateResponse.success) {
+            Write-Host "[+] User(s) successfully added to Privilege Cloud Administrators!" -ForegroundColor Green
+        } else {
+            Write-Host "[-] API Error while adding to role: $($updateResponse.Message)" -ForegroundColor Red
+            Write-ErrorLog "API Error while adding to Privilege Cloud Administrators role: $($updateResponse.Message)"
+        }
     } else {
-        Write-Host "[-] API Error while adding to role: $($response.Message)" -ForegroundColor Red
+        Write-Host "[-] No users available to add to the role." -ForegroundColor Yellow
+        Write-ErrorLog "No users available to add to the Privilege Cloud Administrators role."
     }
 } else {
-    Write-Host "[-] Failed: Could not find 'Privilege Cloud Administrators'." -ForegroundColor Yellow
+    Write-Host "[-] Failed: Could not find 'Privilege Cloud Administrators'." -ForegroundColor Red
+    Write-ErrorLog "Failed: Could not find 'Privilege Cloud Administrators' role via Redrock."
 }
 
 $body = @{ Script = "SELECT ID, Username FROM User WHERE Username LIKE 'installeruser@%'" } | ConvertTo-Json
 $response = Invoke-RestMethod -Uri "$IdentityURL/Redrock/query" -Headers $BaseHeaders -Body $body @RestArgs
-$installerUserId = $response.Result.Results.Row.ID
-$installerUserName = $response.Result.Results.Row.Username
+
+# Safely extract installer user details
+$installerUserId = $null
+$installerUserName = $null
+$installerResults = @($response.Result.Results)
+
+if ($installerResults.Count -gt 0) {
+    $installerUserId = $installerResults[0].Row.ID
+    $installerUserName = $installerResults[0].Row.Username
+} else {
+    Write-Host "[-] Could not find the installeruser." -ForegroundColor Yellow
+    Write-ErrorLog "Could not find installeruser@... in the tenant."
+}
 
 # Overwrite CSV on Desktop to include the Installer info
 $ExportObj.Add("Installer_User", $installerUserName)
 $ExportObj.Add("Installer_User_Pwd", "Paste Here")
 $ExportObj.Add("Installer_User_Id", $installerUserId)
 
-[PSCustomObject]$ExportObj | Export-Csv -Path $ExportPath -NoTypeInformation
+$ExportObj.GetEnumerator() | Select-Object @{Name="Field";Expression={$_.Name}}, Value | Export-Csv -Path $ExportPath -NoTypeInformation
 
 Write-Host "`n--- Onboarding Complete ---" -ForegroundColor Cyan
+
