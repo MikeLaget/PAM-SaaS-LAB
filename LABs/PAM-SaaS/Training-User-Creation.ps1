@@ -5,7 +5,7 @@
 # ==============================================================================
 # 1. HELPER FUNCTIONS
 # ==============================================================================
-$ErrorLogPath = Join-Path -Path "$HOME\Desktop" -ChildPath "TenantAdmin_Error.log"
+$ErrorLogPath = Join-Path -Path "$HOME\Desktop" -ChildPath "TenantAdmin.log"
 
 function Write-ErrorLog {
     param ([string]$Message)
