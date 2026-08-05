@@ -137,25 +137,27 @@ function Get-TenantAdminInfo {
     Write-Verbose "File 'tenantadmin.csv' found on the Desktop."
     $csvData = Import-Csv -Path $filePath -Delimiter ','
 
+    # Parse key-value pairs
     foreach ($row in $csvData) {
-        if ($row.PSObject.Properties.Match('PAM_SaaS_Url').Count -gt 0 -and
-            $row.PSObject.Properties.Match('Identity_Url').Count -gt 0 -and
-            $row.PSObject.Properties.Match('Login').Count -gt 0) {
-
-            $global:PAM_SaaS_Url = $row.PAM_SaaS_Url
-            $global:Identity_Url = $row.Identity_Url
-            $global:AuthUser = $row.Login
-
-            Write-Host "Extracted Data:"
-            Write-Host "PAM SaaS URL : $global:PAM_SaaS_Url"
-            Write-Host "Identity URL : $global:Identity_Url"
-            Write-Host "Auth User    : $global:AuthUser"
-            Write-Host "----------------------------------"
-        } else {
-            Write-Warning "The file does not match the expected format or is missing required columns."
+        switch ($row.Field) {
+            'PAM_SaaS_Url' { $global:PAM_SaaS_Url = $row.Value }
+            'Identity_Url' { $global:Identity_Url = $row.Value }
+            'Login'        { $global:AuthUser = $row.Value }
         }
     }
+
+    # Validate that we successfully grabbed the required fields
+    if ($global:PAM_SaaS_Url -and $global:Identity_Url -and $global:AuthUser) {
+        Write-Host "Extracted Data:"
+        Write-Host "PAM SaaS URL : $global:PAM_SaaS_Url"
+        Write-Host "Identity URL : $global:Identity_Url"
+        Write-Host "Auth User    : $global:AuthUser"
+        Write-Host "----------------------------------"
+    } else {
+        Write-Warning "The file does not match the expected format or is missing required values."
+    }
 }
+
 
 # Helper function to securely prompt for credentials, and iteratively authenticate via API challenges
 function Get-CyberArkToken {
