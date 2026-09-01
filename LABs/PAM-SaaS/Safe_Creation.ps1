@@ -1,41 +1,56 @@
 <#
 .SYNOPSIS
-Safes and Members Provisioning Script v26-07-15
+Safes and Members Provisioning Script v26-09-01
 
 .DESCRIPTION
 This script provisions a matrix of Safes and their respective members in a PAM SaaS environment.
-It performs the following steps:
-1. Starts a transcript logging session to the current user's Desktop.
-2. Retrieves tenant info from the CSV file (tenantadmin.csv) on the Desktop.
-3. Securely prompts for credentials (verifying the password matches locally) and authenticates to CyberArk Identity.
-4. Creates the defined Safes in the $SafesMatrix array.
-5. Adds members to those Safes based on the $SafeMemberships array.
-6. Cleans up by removing the authenticated user ($AuthUser) from the newly created Safes.
-7. Stops the transcript logging.
+It features structured logging, interactive MFA selection, and secure token revocation.
 #>
 
 # ==============================================================================
-# Script Configuration
+# Script Configuration & Toggles
 # ==============================================================================
-# Set to $true to enable detailed verbose logging output, $false for standard output.
-$VerboseOutput = $false
 
-if ($VerboseOutput) {
-    $VerbosePreference = 'Continue'
+$EnableFileLogging = $true      # Set to $false to disable logging to a file
+$EnableDebugMode   = $false     # Set to $true to log detailed API payloads and HTTP responses
+
+# Log File Setup
+$desktopPath = [Environment]::GetFolderPath("Desktop")
+$logFileName = "PAM_Provisioning_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$script:LogFilePath = Join-Path -Path $desktopPath -ChildPath $logFileName
+
+# ==============================================================================
+# Core Logging Function
+# ==============================================================================
+function Write-Log {
+    param (
+        [Parameter(Mandatory=$true)][string]$Message,
+        [ValidateSet("INFO", "WARN", "ERROR", "DEBUG", "SUCCESS")][string]$Level = "INFO"
+    )
+
+    if ($Level -eq "DEBUG" -and -not $script:EnableDebugMode) { return }
+
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogLine = "[$Timestamp] [$Level] $Message"
+
+    switch ($Level) {
+        "INFO"    { Write-Host $LogLine -ForegroundColor Cyan }
+        "SUCCESS" { Write-Host $LogLine -ForegroundColor Green }
+        "WARN"    { Write-Host $LogLine -ForegroundColor Yellow }
+        "ERROR"   { Write-Host $LogLine -ForegroundColor Red }
+        "DEBUG"   { Write-Host $LogLine -ForegroundColor Gray }
+    }
+
+    if ($script:EnableFileLogging) {
+        try { Add-Content -Path $script:LogFilePath -Value $LogLine -ErrorAction Stop } catch {}
+    }
 }
 
-# ==============================================================================
-# Start Transcript Logging
-# ==============================================================================
-$desktopPath = [Environment]::GetFolderPath("Desktop")
-$logFileName = "CyberArk_Provisioning_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-$logPath = Join-Path -Path $desktopPath -ChildPath $logFileName
-
-Write-Host "Starting transcript log. Output will be saved to: $logPath" -ForegroundColor Cyan
-Start-Transcript -Path $logPath -Append
+if ($EnableFileLogging) { Write-Log "Logging initialized. File: $script:LogFilePath" -Level INFO }
+if ($EnableDebugMode)   { Write-Log "DEBUG MODE IS ENABLED. Detailed payloads will be logged." -Level WARN }
 
 # ==============================================================================
-# 1. Safes Matrix - List of all safes required for the lab = $SafesMatrix
+# 1. Safes Matrix
 # ==============================================================================
 $SafesMatrix = @(
     @{ safeName = "P-BOS-LIN-S-FIN"; description = "Linux Financial Servers"; numberOfDaysRetention = 5 }
@@ -47,52 +62,23 @@ $SafesMatrix = @(
 )
 
 # ==============================================================================
-# 2. Safe Memberships Matrix - List of all members for the safes with their permissions = $SafeMemberships
+# 2. Safe Memberships Matrix
 # ==============================================================================
 $SafeMemberships = @(
-    # --- P-BOS-LIN-S-FIN ---
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "LinuxAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
 
-    # --- P-BOS-LIN-S-LOGON ---
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "LinuxAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
-
-    # --- P-BOS-DB-POS ---
-    @{ safeName = "P-BOS-DB-POS"; memberName = "DBAdmins@acme.corp"; memberType = "group"; profile = "ConnectOnly" }
-    @{ safeName = "P-BOS-DB-POS"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
-    @{ safeName = "P-BOS-DB-POS"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
-    @{ safeName = "P-BOS-DB-POS"; memberName = "Secure Infrastructure Privilege Cloud Ephemeral Access"; memberType = "Role"; profile = "ConnectOnly" }
-    @{ safeName = "P-BOS-DB-POS"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
-
-    # --- P-BOS-Web-pgAdmin ---
-    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "WebAppAdmins@acme.corp"; memberType = "group"; profile = "ConnectOnly" }
-    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
-    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
-    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
-
-    # --- P-BOS-WIN-S-LA-FIN ---
-    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "WindowsAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
-    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
-    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
-    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
-
-    # --- P-BOS-WIN-DOM ---
-    @{ safeName = "P-BOS-WIN-DOM"; memberName = "WindowsAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
-    @{ safeName = "P-BOS-WIN-DOM"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
-    @{ safeName = "P-BOS-WIN-DOM"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
-    @{ safeName = "P-BOS-WIN-DOM"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
 )
 
 # ==============================================================================
-# 3. Permission Profiles definitions = $PermissionProfiles
+# 3. Permission Profiles
 # ==============================================================================
-
-# Helper function to generate the 22-item permission block dynamically
 function New-PermSet ([string[]]$TruePerms) {
     $perms = @{
         useAccounts=$false; retrieveAccounts=$false; listAccounts=$false; addAccounts=$false; updateAccountContent=$false; 
@@ -105,7 +91,6 @@ function New-PermSet ([string[]]$TruePerms) {
     return $perms
 }
 
-# Initialize the Hash Table for permission profiles
 $PermissionProfiles = @{
     "ConnectOnly" = New-PermSet -TruePerms @("listAccounts", "useAccounts")
     "ConnectAndViewMembers" = New-PermSet -TruePerms @("listAccounts", "useAccounts", "viewSafeMembers")
@@ -117,27 +102,27 @@ $PermissionProfiles = @{
 # Helper Functions
 # ==============================================================================
 
-# Helper to collect the tenant admin information from the CSV file on the desktop
-function Get-TenantAdminInfo {
-    $filePath = Join-Path -Path $desktopPath -ChildPath "tenantadmin.csv"
-
-    # CSV File Check Loop
-    while (-not (Test-Path -Path $filePath)) {
-        Write-Warning "File 'tenantadmin.csv' was NOT found on the Desktop."
-        Write-Host "Please run the 'Training-User-Creation.ps1' script first to generate this configuration file." -ForegroundColor Yellow
-
-        $retry = Read-Host "Press 'Y' to check again, or any other key to exit"
-        if ($retry -notmatch '^[Yy]$') {
-            Write-Host "Exiting script." -ForegroundColor Yellow
-            try { Stop-Transcript | Out-Null } catch {}
-            exit
+function Get-ApiErrorMessage {
+    param ($ExceptionRecord)
+    if ($null -ne $ExceptionRecord.ErrorDetails) {
+        return $ExceptionRecord.ErrorDetails.Message
+    } elseif ($null -ne $ExceptionRecord.Exception.Response) {
+        if ($ExceptionRecord.Exception.Response.GetType().Name -eq "HttpWebResponse") {
+            $reader = New-Object System.IO.StreamReader($ExceptionRecord.Exception.Response.GetResponseStream())
+            return $reader.ReadToEnd()
         }
     }
+    return $ExceptionRecord.Exception.Message
+}
 
-    Write-Verbose "File 'tenantadmin.csv' found on the Desktop."
+function Get-TenantAdminInfo {
+    $filePath = Join-Path -Path $desktopPath -ChildPath "tenantadmin.csv"
+    while (-not (Test-Path -Path $filePath)) {
+        Write-Log "File 'tenantadmin.csv' was NOT found on the Desktop." -Level WARN
+        $retry = Read-Host "Press 'Y' to check again, or any other key to exit"
+        if ($retry -notmatch '^[Yy]$') { exit }
+    }
     $csvData = Import-Csv -Path $filePath -Delimiter ','
-
-    # Parse key-value pairs
     foreach ($row in $csvData) {
         switch ($row.Field) {
             'PAM_SaaS_Url' { $global:PAM_SaaS_Url = $row.Value }
@@ -145,272 +130,233 @@ function Get-TenantAdminInfo {
             'Login'        { $global:AuthUser = $row.Value }
         }
     }
-
-    # Validate that we successfully grabbed the required fields
     if ($global:PAM_SaaS_Url -and $global:Identity_Url -and $global:AuthUser) {
-        Write-Host "Extracted Data:"
-        Write-Host "PAM SaaS URL : $global:PAM_SaaS_Url"
-        Write-Host "Identity URL : $global:Identity_Url"
-        Write-Host "Auth User    : $global:AuthUser"
-        Write-Host "----------------------------------"
+        Write-Log "Loaded config: PAM_Url=$global:PAM_SaaS_Url | Identity=$global:Identity_Url | User=$global:AuthUser" -Level INFO
     } else {
-        Write-Warning "The file does not match the expected format or is missing required values."
+        Write-Log "CSV is missing required values." -Level ERROR
+        exit
     }
 }
 
-
-# Helper function to securely prompt for credentials, and iteratively authenticate via API challenges
-function Get-CyberArkToken {
-    param (
-        [Parameter(Mandatory=$true)][string]$Identity_Url,
-        [Parameter(Mandatory=$true)][string]$UserEmail
-    )
-
+function Get-IdentityToken {
+    param ([string]$Identity_Url, [string]$UserEmail)
     $RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
     $global:BaseHeaders = @{ "X-Idap-Native-Client" = "true" }
     $IdentityID = ($Identity_Url -replace "https://", "").Split(".")[0]
 
-    Write-Host "`n--- Authenticating to CyberArk Identity ($UserEmail) ---" -ForegroundColor Cyan
-
+    Write-Log "Authenticating to Identity Platform ($UserEmail)" -Level INFO
     $passwordMatch = $false
 
-    # Local Password validation loop
     while (-not $passwordMatch) {
         $pwd1 = Read-Host "Enter the password for $UserEmail" -AsSecureString
         $pwd2 = Read-Host "Confirm the password for $UserEmail" -AsSecureString
-
         $PlainPassword1 = [System.Net.NetworkCredential]::new("", $pwd1).Password
         $PlainPassword2 = [System.Net.NetworkCredential]::new("", $pwd2).Password
 
-        if ($PlainPassword1 -ceq $PlainPassword2) {
-            $passwordMatch = $true
+        if ($PlainPassword1 -ceq $PlainPassword2) { $passwordMatch = $true } 
+        else { Write-Log "Passwords do not match. Please try again." -Level ERROR }
+    }
+
+    try {
+        $bodyStart = @{ TenantId = $IdentityID; Version = "1.0"; User = $UserEmail } | ConvertTo-Json -Compress
+        $resStart = Invoke-RestMethod -Uri "$Identity_Url/Security/StartAuthentication" -Headers $BaseHeaders -Body $bodyStart @RestArgs
+
+        if (-not $resStart.Success -or $null -eq $resStart.Result.Challenges) { throw "API returned Success=$false or no challenges." }
+
+        $SessionId = $resStart.Result.SessionId
+        $MechanismId_Pwd = $resStart.Result.Challenges[0].Mechanisms | Where-Object { $_.Name -match "Password" } | Select-Object -ExpandProperty MechanismId
+        if (-not $MechanismId_Pwd) { $MechanismId_Pwd = $resStart.Result.Challenges[0].Mechanisms[0].MechanismId }
+
+        Write-Log "Submitting password..." -Level INFO
+        $bodyPwd = @{ TenantId = $IdentityID; SessionId = $SessionId; MechanismId = $MechanismId_Pwd; Action = "Answer"; Answer = $PlainPassword1 } | ConvertTo-Json -Compress
+        $resPwd = Invoke-RestMethod -Uri "$Identity_Url/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $bodyPwd @RestArgs
+
+        if (-not $resPwd.Success -or $resPwd.Result.Summary -eq "LoginFailed") { throw "Incorrect password or login failed." }
+        if ($resPwd.Result.Summary -eq "NewPasswordRequired") { throw "User must change their password before API authentication." }
+
+        if ($resPwd.Result.Summary -eq "LoginSuccess") {
+            $global:UToken = $resPwd.Result.Token
         } else {
-            Write-Host "[-] Passwords do not match. Please try again.`n" -ForegroundColor Red
+            # Find the MFA challenge array
+            $mfaChallenge = if ($resPwd.Result.Challenges) { $resPwd.Result.Challenges[0] } else { $resStart.Result.Challenges[1] }
+
+            # Filter for Email or SMS options
+            $mfaOptions = $mfaChallenge.Mechanisms | Where-Object { $_.Name -match "Email" -or $_.Name -match "SMS" }
+            $MechanismId_Mfa = $null
+
+            if ($mfaOptions.Count -gt 1) {
+                Write-Host "`nMultiple MFA methods detected. Please select one:" -ForegroundColor Cyan
+                for ($i = 0; $i -lt $mfaOptions.Count; $i++) {
+                    Write-Host "[$($i + 1)] $($mfaOptions[$i].Name)" -ForegroundColor White
+                }
+
+                [int]$selection = 0
+                while ($selection -lt 1 -or $selection -gt $mfaOptions.Count) {
+                    $inputStr = Read-Host "Select your preferred MFA method (1-$($mfaOptions.Count))"
+                    if ([int]::TryParse($inputStr, [ref]$selection) -and $selection -ge 1 -and $selection -le $mfaOptions.Count) {
+                        break
+                    }
+                    Write-Host "Invalid selection. Try again." -ForegroundColor Red
+                }
+                $MechanismId_Mfa = $mfaOptions[$selection - 1].MechanismId
+                Write-Log "Selected MFA method: $($mfaOptions[$selection - 1].Name)" -Level INFO
+            } elseif ($mfaOptions.Count -eq 1) {
+                $MechanismId_Mfa = $mfaOptions[0].MechanismId
+                Write-Log "Auto-selected only available Email/SMS MFA method: $($mfaOptions[0].Name)" -Level INFO
+            } else {
+                $MechanismId_Mfa = $mfaChallenge.Mechanisms[0].MechanismId
+                Write-Log "No Email or SMS mechanisms found. Falling back to default: $($mfaChallenge.Mechanisms[0].Name)" -Level WARN
+            }
+
+            # Trigger MFA
+            $bodyMfa = @{ TenantID = $IdentityID; SessionId = $SessionId; MechanismId = $MechanismId_Mfa; Action = "StartOOB" } | ConvertTo-Json -Compress
+            $resMfa = Invoke-RestMethod -Uri "$Identity_Url/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $bodyMfa @RestArgs
+
+            Write-Log "MFA challenge sent. Waiting for approval (Check your phone or email)..." -Level WARN
+            $pollResponse = $resMfa
+
+            while ($pollResponse.Result.Summary -in @("OobPending", "PendingOOB", "Pending")) {
+                Start-Sleep -Seconds 3
+                $pollBody = @{ TenantID = $IdentityID; SessionId = $SessionId; MechanismId = $MechanismId_Mfa; Action = "Poll" } | ConvertTo-Json -Compress
+                $pollResponse = Invoke-RestMethod -Uri "$Identity_Url/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $pollBody @RestArgs
+            }
+
+            if ($pollResponse.Result.Summary -eq "LoginSuccess") { $global:UToken = $pollResponse.Result.Token } 
+            else { throw "MFA failed. State: $($pollResponse.Result.Summary)" }
         }
-    }
 
-    Write-Host "[*] Starting authentication process..."
-    $bodyStart = @{ 
-        TenantId = $IdentityID
-        Version = "1.0"
-        User = $UserEmail 
-    } | ConvertTo-Json -Compress
-
-    Write-Verbose "Sending StartAuthentication request to: $Identity_Url/Security/StartAuthentication"
-    $resStart = Invoke-RestMethod -Uri "$Identity_Url/Security/StartAuthentication" -Headers $BaseHeaders -Body $bodyStart @RestArgs
-
-    if (-not $resStart.Success -or -not $resStart.Result.Challenges) {
-        throw "Failed to start authentication or no challenges returned."
-    }
-
-    $SessionId = $resStart.Result.SessionId
-
-    # Capture the mechanism IDs for the challenges up front
-    $MechanismId_Pwd = $resStart.Result.Challenges[0].Mechanisms[0].MechanismId
-    $MechanismId_Mfa = $resStart.Result.Challenges[1].Mechanisms[0].MechanismId
-
-    Write-Host "[*] Submitting password to Identity..."
-    $bodyPwd = @{
-        TenantId    = $IdentityID
-        SessionId   = $SessionId
-        MechanismId = $MechanismId_Pwd
-        Action      = "Answer"
-        Answer      = $PlainPassword1
-    } | ConvertTo-Json -Compress
-
-    Write-Verbose "Sending AdvanceAuthentication (Password) request."
-    $resPwd = Invoke-RestMethod -Uri "$Identity_Url/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $bodyPwd @RestArgs
-
-    if (-not $resPwd.Success -or $resPwd.Result.Summary -eq "LoginFailed") {
-        throw "Authentication failed: Incorrect password."
-    }
-
-    # Auth Step 3: Trigger MFA (OOB)
-    Write-Host "[*] Triggering MFA Challenge..."
-    $bodyMfa = @{
-        TenantID    = $IdentityID
-        SessionId   = $SessionId
-        MechanismId = $MechanismId_Mfa
-        Action      = "StartOOB"
-    } | ConvertTo-Json -Compress
-
-    Write-Verbose "Sending AdvanceAuthentication (MFA StartOOB) request."
-    $resMfa = Invoke-RestMethod -Uri "$Identity_Url/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $bodyMfa @RestArgs
-
-    Write-Host "`n[!] MFA challenge sent to your device." -ForegroundColor Yellow
-    Write-Host "[!] Waiting for approval... Check your email or authenticator app." -ForegroundColor Cyan
-
-    $pollResponse = $resMfa
-
-    # Poll Identity API until the user clicks the link/approves MFA
-    while ($pollResponse.Result.Summary -in @("OobPending", "PendingOOB", "Pending")) {
-        Start-Sleep -Seconds 3
-        $pollBody = @{
-            TenantID    = $IdentityID
-            SessionId   = $SessionId
-            MechanismId = $MechanismId_Mfa
-            Action      = "Poll"
-        } | ConvertTo-Json -Compress
-
-        Write-Verbose "Polling for MFA completion token..."
-        $pollResponse = Invoke-RestMethod -Uri "$Identity_Url/Security/AdvanceAuthentication" -Headers $BaseHeaders -Body $pollBody @RestArgs
-    }
-
-    if ($pollResponse.Success -and -not [string]::IsNullOrEmpty($pollResponse.Result.Token)) {
-        $global:UToken = $pollResponse.Result.Token
+        if (-not $global:UToken) { throw "No Token was returned." }
         $BaseHeaders.Add("Authorization", "Bearer $UToken")
-        Write-Host "[+] Authentication Successful!" -ForegroundColor Green
-    } else {
-        throw "Authentication failed: MFA approval failed or timed out."
+        Write-Log "Authentication Successful!" -Level SUCCESS
+
+    } catch {
+        Write-Log "Authentication failed: $($_.Exception.Message)" -Level ERROR
+        throw
     }
 }
 
-# Create new Safes in the Vault
-function New-CyberArkSafes {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)][string]$PAM_SaaS_Url,
-        [Parameter(Mandatory = $true)][hashtable]$BaseHeaders,
-        [Parameter(Mandatory = $true)][array]$SafesMatrix
-    )
-
+function Revoke-IdentityToken {
+    param ([string]$Identity_Url, [hashtable]$BaseHeaders)
     $RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
-    Write-Host "`n--- Starting Batch Safe Creation ($($SafesMatrix.Count) Safes) ---" -ForegroundColor Cyan
+    Write-Log "Revoking Identity token and destroying session..." -Level INFO
+    try {
+        Invoke-RestMethod -Uri "$Identity_Url/Security/Logout" -Headers $BaseHeaders @RestArgs -ErrorAction Stop | Out-Null
+        Write-Log "Session token successfully revoked." -Level SUCCESS
+    } catch {
+        Write-Log "Failed to gracefully revoke token: $(Get-ApiErrorMessage -ExceptionRecord $_)" -Level WARN
+    }
+}
 
+function New-PAMSafes {
+    param ([string]$PAM_SaaS_Url, [hashtable]$BaseHeaders, [array]$SafesMatrix)
+    $RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
     $Sub_Domain = ($PAM_SaaS_Url -replace "https?://", "").Split(".")[0]
     $BaseUrl = "https://$Sub_Domain.privilegecloud.cyberark.cloud"
 
+    Write-Log "Starting Batch Safe Creation ($($SafesMatrix.Count) Safes)" -Level INFO
+
     foreach ($safe in $SafesMatrix) {
-        Write-Host "[*] Creating Safe '$($safe.safeName)'..." -ForegroundColor Cyan
-
-        $safeBody = @{
-            safeName = $safe.safeName
-            description = $safe.description
-            numberOfDaysRetention = $safe.numberOfDaysRetention
-        }
-
-        if ($null -ne $safe.autoPurgeEnabled) {
-            $safeBody.Add("autoPurgeEnabled", $safe.autoPurgeEnabled)
-        }
-
-        $jsonBody = $safeBody | ConvertTo-Json -Depth 5
+        $jsonBody = $safe | ConvertTo-Json -Depth 5
+        Write-Log "Creating Safe '$($safe.safeName)'..." -Level INFO
 
         try {
-            Write-Verbose "Target URI: $BaseUrl/PasswordVault/API/Safes"
-            Write-Verbose "Payload Body: $jsonBody"
-
-            $safeResponse = Invoke-RestMethod -Uri "$BaseUrl/PasswordVault/API/Safes" -Headers $BaseHeaders -Body $jsonBody @RestArgs
-            Write-Host "[+] Safe '$($safe.safeName)' created successfully." -ForegroundColor Green
+            Invoke-RestMethod -Uri "$BaseUrl/PasswordVault/API/Safes" -Headers $BaseHeaders -Body $jsonBody @RestArgs | Out-Null
+            Write-Log "Safe '$($safe.safeName)' created successfully." -Level SUCCESS
         } catch {
-            Write-Host "[-] Failed to create safe '$($safe.safeName)': $($_.Exception.Message)" -ForegroundColor Red
-            if ($_.ErrorDetails) {
-                Write-Host "    Server Error Details: $($_.ErrorDetails.Message)" -ForegroundColor DarkRed
-            } elseif ($_.Exception.Response) {
-                try {
-                    $stream = $_.Exception.Response.GetResponseStream()
-                    $reader = New-Object System.IO.StreamReader($stream)
-                    $responseBody = $reader.ReadToEnd()
-                    Write-Host "    Server Response Body: $responseBody" -ForegroundColor DarkRed
-                } catch {}
+            $apiError = Get-ApiErrorMessage -ExceptionRecord $_
+            if ($apiError -match "already exists" -or $_.Exception.Message -match "409") {
+                Write-Log "Safe '$($safe.safeName)' already exists. Proceeding to membership checks." -Level WARN
+            } else {
+                Write-Log "Failed to create safe '$($safe.safeName)': $apiError" -Level ERROR
             }
         }
     }
 }
 
-# Add Members to Safes based on the matrix
-function Add-CyberArkSafeMembers {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)][string]$PAM_SaaS_Url,
-        [Parameter(Mandatory = $true)][hashtable]$BaseHeaders,
-        [Parameter(Mandatory = $true)][string]$DirectoryUuid,
-        [Parameter(Mandatory = $true)][hashtable]$PermissionProfiles,
-        [Parameter(Mandatory = $true)][array]$SafeMemberships
-    )
-
-    $RestArgs = @{ Method = 'POST'; ContentType = 'application/json' }
-    Write-Host "`n--- Starting Batch Safe Member Addition ($($SafeMemberships.Count) Memberships) ---" -ForegroundColor Cyan
-
+function Add-PAMSafeMembers {
+    param ([string]$PAM_SaaS_Url, [hashtable]$BaseHeaders, [string]$DirectoryUuid, [hashtable]$PermissionProfiles, [array]$SafeMemberships)
     $Sub_Domain = ($PAM_SaaS_Url -replace "https?://", "").Split(".")[0]
     $BaseUrl = "https://$Sub_Domain.privilegecloud.cyberark.cloud"
+
+    Write-Log "Starting Batch Safe Member Addition ($($SafeMemberships.Count) Memberships)" -Level INFO
 
     foreach ($mapping in $SafeMemberships) {
-        $safeName = $mapping.safeName
-        $memberName = $mapping.memberName
-        $memberType = $mapping.memberType
-        $profileName = $mapping.profile
+        $searchIn = if ($mapping.memberName -in @("Safe Master", "Secure Infrastructure Privilege Cloud Ephemeral Access", "Privilege Cloud Administrators")) { "Vault" } else { $DirectoryUuid }
+        $permissions = $PermissionProfiles[$mapping.profile]
 
-        Write-Host "[*] Processing member '$memberName' for Safe '$safeName'..." -ForegroundColor Cyan
+        $memberBody = @{ memberName = $mapping.memberName; memberType = $mapping.memberType; searchIn = $searchIn; permissions = $permissions } | ConvertTo-Json -Depth 10
+        $encodedSafeNamePOST = [uri]::EscapeDataString($mapping.safeName)
+        $uri = "$BaseUrl/PasswordVault/API/Safes/$encodedSafeNamePOST/Members/"
 
-        $searchIn = if ($memberName -in @("Safe Master", "Secure Infrastructure Privilege Cloud Ephemeral Access", "Privilege Cloud Administrators")) { 
-            "Vault" 
-        } else { 
-            $DirectoryUuid 
-        }
-
-        $permissions = $PermissionProfiles[$profileName]
-
-        if ($null -eq $permissions) {
-            Write-Warning "Permissions profile '$profileName' could not be found. Skipping."
-            continue
-        }
-
-        $memberBody = @{
-            memberName = $memberName
-            memberType = $memberType
-            searchIn = $searchIn
-            permissions = $permissions
-        } | ConvertTo-Json -Depth 10
-
-        $uri = "$BaseUrl/PasswordVault/API/Safes/$safeName/Members/"
+        Write-Log "Adding member '$($mapping.memberName)' to '$($mapping.safeName)'..." -Level INFO
 
         try {
-            Write-Verbose "Target URI: $uri"
-            Write-Verbose "Payload Body: $memberBody"
-
-            $response = Invoke-RestMethod -Uri $uri -Headers $BaseHeaders -Body $memberBody @RestArgs
-
-            if ($response -is [string] -and $response -match "idaptive|<!DOCTYPE html>") {
-                Write-Host "[-] Failed to add member '$memberName' to '$safeName'. Token unauthorized or invalid URL." -ForegroundColor Red
-            } else {
-                Write-Host "[+] Member '$memberName' added successfully to '$safeName'." -ForegroundColor Green
-            }
+            Invoke-RestMethod -Uri $uri -Headers $BaseHeaders -Body $memberBody -Method POST -ContentType 'application/json' | Out-Null
+            Write-Log "Member '$($mapping.memberName)' added to '$($mapping.safeName)'." -Level SUCCESS
         } catch {
-            Write-Host "[-] Failed to add member '$memberName' to '$safeName'." -ForegroundColor Red
-            Write-Host "    Exception Message: $($_.Exception.Message)" -ForegroundColor Red
+            $apiError = Get-ApiErrorMessage -ExceptionRecord $_
+
+            if ($apiError -match "already exists" -or $_.Exception.Message -match "409") {
+                Write-Log "Member '$($mapping.memberName)' already exists in '$($mapping.safeName)'. Verifying permissions..." -Level WARN
+                try {
+                    $encodedSafeName = [uri]::EscapeDataString($mapping.safeName)
+                    $encodedMemberName = [uri]::EscapeDataString($mapping.memberName)
+                    $getUri = "$BaseUrl/PasswordVault/API/Safes/$encodedSafeName/Members/$encodedMemberName"
+
+                    $existingMember = Invoke-RestMethod -Uri $getUri -Headers $BaseHeaders -Method GET
+
+                    $mismatchFound = $false
+                    foreach ($key in $permissions.Keys) {
+                        if ($existingMember.permissions.$key -ne $permissions[$key]) {
+                            $mismatchFound = $true
+                            break
+                        }
+                    }
+
+                    if ($mismatchFound) {
+                        Write-Log "Permissions for '$($mapping.memberName)' are INCORRECT. Expected profile: $($mapping.profile)." -Level ERROR
+                    } else {
+                        Write-Log "Permissions for '$($mapping.memberName)' are correctly configured to profile: $($mapping.profile)." -Level SUCCESS
+                    }
+                } catch {
+                    $getApiError = Get-ApiErrorMessage -ExceptionRecord $_
+                    if ($getApiError -match "404") {
+                        Write-Log "Could not locate member details for '$($mapping.memberName)'. The server returned 404 Not Found." -Level ERROR
+                    } else {
+                        Write-Log "Failed to retrieve existing permissions for '$($mapping.memberName)': $getApiError" -Level ERROR
+                    }
+                }
+            } else {
+                Write-Log "Failed to add member '$($mapping.memberName)' to '$($mapping.safeName)': $apiError" -Level ERROR
+            }
         }
-        Write-Host "--------------------------------------------------------"
     }
 }
 
-# Remove a specific member from the created Safes
-function Remove-CyberArkSafeMember {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)][string]$PAM_SaaS_Url,
-        [Parameter(Mandatory = $true)][hashtable]$BaseHeaders,
-        [Parameter(Mandatory = $true)][array]$SafesMatrix,
-        [Parameter(Mandatory = $true)][string]$MemberToRemove
-    )
-
+function Remove-PAMSafeMember {
+    param ([string]$PAM_SaaS_Url, [hashtable]$BaseHeaders, [array]$SafesMatrix, [string]$MemberToRemove)
     $RestArgs = @{ Method = 'DELETE'; ContentType = 'application/json' }
-    Write-Host "`n--- Cleaning Up: Removing '$MemberToRemove' from Safes ---" -ForegroundColor Cyan
-
     $Sub_Domain = ($PAM_SaaS_Url -replace "https?://", "").Split(".")[0]
     $BaseUrl = "https://$Sub_Domain.privilegecloud.cyberark.cloud"
 
-    foreach ($safe in $SafesMatrix) {
-        $safeName = $safe.safeName
-        Write-Host "[*] Removing '$MemberToRemove' from Safe '$safeName'..." -ForegroundColor Cyan
+    Write-Log "Cleaning Up: Removing '$MemberToRemove' from Safes" -Level INFO
+    $encodedMemberToRemove = [uri]::EscapeDataString($MemberToRemove)
 
-        $uri = "$BaseUrl/PasswordVault/API/Safes/$safeName/Members/$MemberToRemove/"
+    foreach ($safe in $SafesMatrix) {
+        $encodedSafeName = [uri]::EscapeDataString($safe.safeName)
+        $uri = "$BaseUrl/PasswordVault/API/Safes/$encodedSafeName/Members/$encodedMemberToRemove/"
+        Write-Log "Removing '$MemberToRemove' from Safe '$($safe.safeName)'..." -Level INFO
 
         try {
-            Write-Verbose "Target URI: $uri"
-            $response = Invoke-RestMethod -Uri $uri -Headers $BaseHeaders @RestArgs
-            Write-Host "[+] Successfully removed '$MemberToRemove' from '$safeName'." -ForegroundColor Green
+            Invoke-RestMethod -Uri $uri -Headers $BaseHeaders @RestArgs | Out-Null
+            Write-Log "Successfully removed '$MemberToRemove' from '$($safe.safeName)'." -Level SUCCESS
         } catch {
-            Write-Host "[-] Failed to remove '$MemberToRemove' from '$safeName': $($_.Exception.Message)" -ForegroundColor Red
+            $apiError = Get-ApiErrorMessage -ExceptionRecord $_
+            if ($apiError -match "not found" -or $_.Exception.Message -match "404") {
+                Write-Log "'$MemberToRemove' is not a member of '$($safe.safeName)'. Skipping." -Level DEBUG
+            } else {
+                Write-Log "Failed to remove '$MemberToRemove' from '$($safe.safeName)': $apiError" -Level ERROR
+            }
         }
     }
 }
@@ -419,44 +365,31 @@ function Remove-CyberArkSafeMember {
 # Execution Flow
 # ==============================================================================
 try {
+    Write-Log "--- Script Execution Started ---" -Level INFO
     Get-TenantAdminInfo
 
-    Get-CyberArkToken -Identity_Url $Identity_Url -UserEmail $AuthUser
+    Get-IdentityToken -Identity_Url $Identity_Url -UserEmail $AuthUser
 
-    # Define the DirectoryName before using it to filter
     $DirectoryName = "Active Directory: acme.corp"
-
-    Write-Verbose "Fetching Directory Services from Identity..."
+    Write-Log "Fetching Directory UUID for '$DirectoryName'..." -Level INFO
     $response = Invoke-RestMethod -Uri "$Identity_Url/Core/GetDirectoryServices" -Method POST -Headers $BaseHeaders -ContentType 'application/json'
-    $targetDirectory = $response.Result.Results | Where-Object { $_.Row.DisplayName -eq $DirectoryName }
+    $DirectoryUuid = ($response.Result.Results | Where-Object { $_.Row.DisplayName -eq $DirectoryName }).Row.directoryServiceUuid
 
-    if (-not $targetDirectory) {
-        throw "Could not locate directory '$DirectoryName' in Identity."
-    }
+    if (-not $DirectoryUuid) { throw "Could not locate directory '$DirectoryName' in Identity platform." }
+    Write-Log "Directory UUID: $DirectoryUuid" -Level SUCCESS
 
-    $DirectoryUuid = $targetDirectory.Row.directoryServiceUuid
-    Write-Host "Directory UUID: $DirectoryUuid" -ForegroundColor Gray
+    New-PAMSafes -PAM_SaaS_Url $PAM_SaaS_Url -BaseHeaders $BaseHeaders -SafesMatrix $SafesMatrix
 
-    # Trigger Safe creation
-    New-CyberArkSafes -PAM_SaaS_Url $PAM_SaaS_Url -BaseHeaders $BaseHeaders -SafesMatrix $SafesMatrix
+    Add-PAMSafeMembers -PAM_SaaS_Url $PAM_SaaS_Url -BaseHeaders $BaseHeaders -DirectoryUuid $DirectoryUuid -PermissionProfiles $PermissionProfiles -SafeMemberships $SafeMemberships
 
-    # Trigger Safe member addition
-    Add-CyberArkSafeMembers -PAM_SaaS_Url $PAM_SaaS_Url -BaseHeaders $BaseHeaders -DirectoryUuid $DirectoryUuid -PermissionProfiles $PermissionProfiles -SafeMemberships $SafeMemberships
+    Remove-PAMSafeMember -PAM_SaaS_Url $PAM_SaaS_Url -BaseHeaders $BaseHeaders -SafesMatrix $SafesMatrix -MemberToRemove $AuthUser
 
-    # Clean up by removing the authenticated user from the created safes
-    Remove-CyberArkSafeMember -PAM_SaaS_Url $PAM_SaaS_Url -BaseHeaders $BaseHeaders -SafesMatrix $SafesMatrix -MemberToRemove $AuthUser
-
+    Write-Log "--- Script Execution Completed Successfully ---" -Level SUCCESS
 } catch {
-    Write-Error "Script execution halted: $_"
+    Write-Log "Script execution halted due to a critical error: $($_.Exception.Message)" -Level ERROR
 } finally {
-    # Check if we have an active transcript before trying to stop it
-    try {
-        $transcriptInfo = Get-Command Stop-Transcript -ErrorAction Stop
-        if ($host.UI.RawUI.IsTranscribing) {
-            Write-Host "`n--- Execution Complete ---" -ForegroundColor Cyan
-            Stop-Transcript | Out-Null
-        }
-    } catch {
-        # Silently catch and suppress errors if transcript is not active or command is unavailable
+    # Always attempt to revoke the token and destroy the session to ensure security, even if script fails
+    if ($global:BaseHeaders -and $global:BaseHeaders.ContainsKey("Authorization")) {
+        Revoke-IdentityToken -Identity_Url $Identity_Url -BaseHeaders $global:BaseHeaders
     }
 }
