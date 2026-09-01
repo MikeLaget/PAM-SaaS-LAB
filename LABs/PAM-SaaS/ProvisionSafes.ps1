@@ -84,7 +84,7 @@ try {
 
     Add-PAMSafeMembers -PAM_SaaS_Url $global:PAM_SaaS_Url -BaseHeaders $global:BaseHeaders -DirectoryUuid $DirectoryUuid -PermissionProfiles $PermissionProfiles -SafeMemberships $SafeMemberships
 
-    Remove-PAMSafeMember -PAM_SaaS_Url $global:PAM_SaaS_Url -BaseHeaders $global:BaseHeaders -SafesMatrix $SafesMatrix -MemberToRemove $global:AuthUser
+    #Remove-PAMSafeMember -PAM_SaaS_Url $global:PAM_SaaS_Url -BaseHeaders $global:BaseHeaders -SafesMatrix $SafesMatrix -MemberToRemove $global:AuthUser
 
     Write-Log "--- Script Execution Completed Successfully ---" -Level SUCCESS
 } catch {
