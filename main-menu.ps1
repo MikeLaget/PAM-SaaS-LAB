@@ -3,13 +3,14 @@ function Show-Menu {
     Write-Host "==========================================" -ForegroundColor Cyan
     Write-Host " Palo Alto Networks University - Main Menu" -ForegroundColor Cyan
     Write-Host "==========================================" -ForegroundColor Cyan
-    Write-Host "Version: v26.07.10.1" -ForegroundColor DarkMagenta
+    Write-Host "Version: v26.09.01" -ForegroundColor DarkMagenta
     Write-Host
     Write-Host "0. Create a Training user."
     Write-Host "1. Set Mobile/Cell and Email for ACME LAB users"
     Write-Host "2. Set Region and Time-Zone for all Servers"
     Write-Host "3. Set Light or Dark mode"
-    Write-Host "4  Get Egress Public IP"
+    Write-Host "4.  Get Egress Public IP"
+    Write-Host "5. Provision Safes via RestAPI"
     Write-Host "E. Exit"
     Write-Host
 }
@@ -20,13 +21,12 @@ function Run-Menu {
         $choice = Read-Host "Enter your choice"
 
         switch ($choice) {
-			"0" { & ".\LABs\PAM-SaaS\Training-User-Creation.ps1"; Read-Host "Press Enter to continue" }
+			"0" { & ".\LABs\PAM-SaaS\Create_Accounts.ps1"; Read-Host "Press Enter to continue" }
             "1" { & ".\Update-SMS-EMAIL\Update-SMS-Email.ps1"; Read-Host "Press Enter to continue" }
             "2" { & ".\Theme\Update-TimeZone-Region.ps1"; Read-Host "Press Enter to continue" }
             "3" { & ".\Theme\Set-WindowsTheme.ps1"; Read-Host "Press Enter to continue" }
             "4" { & ".\LABs\PAM-SaaS\Get-PublicIP.ps1"; Read-Host "Press Enter to continue" }
-            "5" { & ".\LABs\Migration\Test-CCP.ps1"; Read-Host "Press Enter to continue" }
-            "CC" { & "Remove-Item (Get-PSReadLineOption).HistorySavePath"; Read-Host "Press Enter to continue" }
+            "5" { & ".\LABs\PAM-SaaS\ProvisionSafe.ps1"; Read-Host "Press Enter to continue" }
             "E" { Write-Host "Exiting..." -ForegroundColor Yellow; return }  # Exits the function and menu
             default { Write-Host "Invalid choice"; Start-Sleep -Seconds 1 }
         }
