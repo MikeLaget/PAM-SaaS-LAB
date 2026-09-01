@@ -1,2 +1,2 @@
-# CPC-Scripts
+# Idira PAM SaaS
 Personal scripts
