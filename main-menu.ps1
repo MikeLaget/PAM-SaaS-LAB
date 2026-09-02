@@ -9,7 +9,7 @@ function Show-Menu {
     Write-Host "1. Set Mobile/Cell and Email for ACME LAB users"
     Write-Host "2. Set Region and Time-Zone for all Servers"
     Write-Host "3. Set Light or Dark mode"
-    Write-Host "4.  Get Egress Public IP"
+    Write-Host "4. Get Egress Public IP"
     Write-Host "5. Provision Safes via RestAPI"
     Write-Host "E. Exit"
     Write-Host
