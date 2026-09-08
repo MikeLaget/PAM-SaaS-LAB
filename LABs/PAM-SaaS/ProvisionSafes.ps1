@@ -15,11 +15,14 @@ The Execution Flow:
 5. Least Privilege Cleanup: Finally, it removes the administrator account (the one running the script) from the Safes, ensuring that admins don't retain permanent backdoor access to secure vaults.
 v26-9-01
 #>
+<#
+.SYNOPSIS
+Safes and Members Provisioning Script v26-09-07
+#>
 
 # Load the external library dynamically based on script location
 $libraryPath = Join-Path -Path $PSScriptRoot -ChildPath "PAM_Library.ps1"
 . $libraryPath
-
 
 # Config
 $global:EnableFileLogging = $true
