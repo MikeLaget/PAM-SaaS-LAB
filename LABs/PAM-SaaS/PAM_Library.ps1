@@ -101,7 +101,7 @@ function Get-IdentityURL($idURL) {
 }
 
 function Get-TenantAdminInfo {
-    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $desktopPath = ([Environment]::GetFolderPath("Desktop"))
     $filePath = Join-Path -Path $desktopPath -ChildPath "tenantadmin.csv"
 
     while (-not (Test-Path -Path $filePath)) {
@@ -136,7 +136,7 @@ function Get-IdentityToken {
     $global:BaseHeaders = @{ "X-Idap-Native-Client" = "true" }
     $IdentityID = ($Identity_Url -replace "https://", "").Split(".")[0]
 
-    Write-Log "Authenticating to Idira Platform ($UserEmail)" -Level INFO
+    Write-Log "Authenticating to Identity Platform ($UserEmail)" -Level INFO
     $passwordMatch = $false
 
     while (-not $passwordMatch) {
@@ -354,3 +354,4 @@ function Remove-PAMSafeMember {
         }
     }
 }
+
