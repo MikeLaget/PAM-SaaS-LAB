@@ -41,16 +41,43 @@ $SafesMatrix = @(
     @{ safeName = "P-BOS-WIN-DOM"; description = "Windows Domain Servers"; numberOfDaysRetention = 5 }
 )
 
-$SafeMemberships = @(
+SafeMemberships = @(
+    # --- P-BOS-LIN-S-FIN ---
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "LinuxAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
 
+    # --- P-BOS-LIN-S-LOGON ---
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "LinuxAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
     @{ safeName = "P-BOS-LIN-S-LOGON"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
+
+    # --- P-BOS-DB-POS ---
+    @{ safeName = "P-BOS-DB-POS"; memberName = "DBAdmins@acme.corp"; memberType = "group"; profile = "ConnectOnly" }
+    @{ safeName = "P-BOS-DB-POS"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
+    @{ safeName = "P-BOS-DB-POS"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
+    @{ safeName = "P-BOS-DB-POS"; memberName = "Secure Infrastructure Privilege Cloud Ephemeral Access"; memberType = "Role"; profile = "ConnectOnly" }
+    @{ safeName = "P-BOS-DB-POS"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
+
+    # --- P-BOS-Web-pgAdmin ---
+    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "WebAppAdmins@acme.corp"; memberType = "group"; profile = "ConnectOnly" }
+    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
+    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
+    @{ safeName = "P-BOS-Web-pgAdmin"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
+
+    # --- P-BOS-WIN-S-LA-FIN ---
+    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "WindowsAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
+    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
+    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
+    @{ safeName = "P-BOS-WIN-S-LA-FIN"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
+
+    # --- P-BOS-WIN-DOM ---
+    @{ safeName = "P-BOS-WIN-DOM"; memberName = "WindowsAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
+    @{ safeName = "P-BOS-WIN-DOM"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
+    @{ safeName = "P-BOS-WIN-DOM"; memberName = "Safe Master"; memberType = "Role"; profile = "Full" }
+    @{ safeName = "P-BOS-WIN-DOM"; memberName = "Privilege Cloud Safe Managers"; memberType = "Role"; profile = "Full" }
 )
 
 function New-PermSet ([string[]]$TruePerms) {
