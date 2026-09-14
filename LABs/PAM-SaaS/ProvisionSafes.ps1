@@ -41,7 +41,7 @@ $SafesMatrix = @(
     @{ safeName = "P-BOS-WIN-DOM"; description = "Windows Domain Servers"; numberOfDaysRetention = 5 }
 )
 
-SafeMemberships = @(
+$SafeMemberships = @(
     # --- P-BOS-LIN-S-FIN ---
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "LinuxAdmins@acme.corp"; memberType = "group"; profile = "ConnectAndViewMembers" }
     @{ safeName = "P-BOS-LIN-S-FIN"; memberName = "Privilege Cloud Administrators"; memberType = "Role"; profile = "VaultAdmin" }
