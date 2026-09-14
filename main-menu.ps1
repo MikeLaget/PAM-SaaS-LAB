@@ -26,7 +26,7 @@ function Run-Menu {
             "2" { & ".\Theme\Update-TimeZone-Region.ps1"; Read-Host "Press Enter to continue" }
             "3" { & ".\Theme\Set-WindowsTheme.ps1"; Read-Host "Press Enter to continue" }
             "4" { & ".\LABs\PAM-SaaS\Get-PublicIP.ps1"; Read-Host "Press Enter to continue" }
-            "5" { & ".\LABs\PAM-SaaS\ProvisionSafe.ps1"; Read-Host "Press Enter to continue" }
+            "5" { & ".\LABs\PAM-SaaS\ProvisionSafes.ps1"; Read-Host "Press Enter to continue" }
             "E" { Write-Host "Exiting..." -ForegroundColor Yellow; return }  # Exits the function and menu
             default { Write-Host "Invalid choice"; Start-Sleep -Seconds 1 }
         }
