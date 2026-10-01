@@ -1,4 +1,6 @@
-﻿# Intro / description
+# Intro / description
+v26-10-1
+
 Write-Host "`nIdira Bulk Update Managing CPM" -ForegroundColor Cyan
 Write-Host "=================================`n" -ForegroundColor Cyan
 
@@ -14,7 +16,7 @@ function Get-IdentityURL {
     param (
         [Parameter(
             Mandatory = $true,
-            HelpMessage = 'Base URL of the Idira Identity platform',
+            HelpMessage = 'Base URL of the Privilege Cloud platform',
             ValueFromPipelineByPropertyName = $true)]
         [string]$PCloudURL,
         [Parameter(ValueFromRemainingArguments = $true,
@@ -27,15 +29,29 @@ function Get-IdentityURL {
         $PCloudBaseURL = "https://$($matches['sub']).cyberark.$($matches['top'])"
     }
     Process {
-        # PowerShell 7.4+ always uses RequestMessage.RequestUri.Host
-        $invokeWebRequestParams = @{
-            Uri        = $PCloudBaseURL
-            WebSession = $Script:websession.value
+        # UseBasicParsing prevents PS5.1 IE engine issues. SilentlyContinue prevents terminating errors from crashing the script.
+        $webResponse = Invoke-WebRequest -Uri $PCloudBaseURL -UseBasicParsing -ErrorAction SilentlyContinue
+
+        $IdentityBaseURL = $null
+
+        if ($null -ne $webResponse) {
+            if ($null -ne $webResponse.BaseResponse.ResponseUri) {
+                # Windows PowerShell 5.1
+                $IdentityBaseURL = $webResponse.BaseResponse.ResponseUri.Host
+            } 
+            elseif ($null -ne $webResponse.BaseResponse.RequestMessage) {
+                # PowerShell 7+
+                $IdentityBaseURL = $webResponse.BaseResponse.RequestMessage.RequestUri.Host
+            }
         }
-        $IdentityBaseURL = (Invoke-WebRequest @invokeWebRequestParams).BaseResponse.RequestMessage.RequestUri.Host
+
+        # Fallback if the web request was blocked or failed
+        if ([string]::IsNullOrEmpty($IdentityBaseURL)) {
+            $IdentityBaseURL = Read-Host "Could not auto-resolve Identity URL. Enter your Identity Host (e.g., abc1234.id.cyberark.cloud)"
+        }
     }
-    end {
-        # Return the Identity URL
+    End {
+        # Return the final Identity URL
         $IdentityURL = "https://$IdentityBaseURL"
         return $IdentityURL
     }
