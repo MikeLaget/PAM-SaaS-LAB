@@ -1,5 +1,5 @@
 # Intro / description
-v26-10-1
+#v26-10-1
 
 Write-Host "`nIdira Bulk Update Managing CPM" -ForegroundColor Cyan
 Write-Host "=================================`n" -ForegroundColor Cyan
