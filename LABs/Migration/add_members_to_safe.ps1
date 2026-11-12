@@ -6,6 +6,9 @@ $PVWA_URL = "https://pvwa.acme.corp/PasswordVault"
 $Username = "mike"
 $SafeName = "T-ACME-WIN-DOM-TEST-02"
 
+# IMPORTANT: Set this to the exact Directory Name (LDAP) as configured in PVWA
+$DomainName = "acme.corp" 
+
 # 1. Prompt for password securely
 $Credential = Get-Credential -UserName $Username -Message "Enter LDAP password for $Username"
 $Password = $Credential.GetNetworkCredential().Password
@@ -90,9 +93,11 @@ catch {
     exit
 }
 
-# 4. Remove users from the Safe
-Write-Host "[*] Removing users acme_test_0001 to acme_test_0068..." -ForegroundColor Cyan
-$RestParams.Method = "DELETE"
+# 4. Add users to the Safe
+Write-Host "[*] Adding users acme_test_0001 to acme_test_0068..." -ForegroundColor Cyan
+$AddMemberUrl = "$PVWA_URL/API/Safes/$SafeUrlId/Members/"
+$RestParams.Method = "POST"
+$RestParams.Uri = $AddMemberUrl
 
 $SuccessCount = 0
 $ErrorCount = 0
@@ -100,20 +105,32 @@ $ErrorCount = 0
 for ($i = 1; $i -le 68; $i++) {
     $MemberName = "acme_test_{0:D4}" -f $i
 
-    # URL encode the member name to ensure special characters don't break the path
-    $EncodedMemberName = [uri]::EscapeDataString($MemberName)
-    $RemoveMemberUrl = "$PVWA_URL/API/Safes/$SafeUrlId/Members/$EncodedMemberName/"
-    $RestParams.Uri = $RemoveMemberUrl
+    # Omitted 'memberType' to prevent serialization crashes on some PVWA versions.
+    $MemberPayload = @{
+        memberName = $MemberName
+        searchIn = $DomainName
+        permissions = @{
+            useAccounts = $false
+            retrieveAccounts = $false
+            listAccounts = $true
+            manageSafe = $false
+            manageSafeMembers = $false
+            viewAuditLog = $true
+            viewSafeMembers = $true
+            requestsAuthorizationLevel1 = $false
+            requestsAuthorizationLevel2 = $false
+        }
+    } | ConvertTo-Json -Depth 5
 
     try {
-        $RemoveResponse = Invoke-RestMethod @RestParams
-        Write-Host "  [+] Removed $MemberName successfully." -ForegroundColor Green
+        $RestParams.Body = $MemberPayload
+        $AddResponse = Invoke-RestMethod @RestParams
+        Write-Host "  [+] Added $MemberName successfully." -ForegroundColor Green
         $SuccessCount++
     }
     catch {
         $StatusCode = 0
         if ($_.Exception.Response) {
-            # Handle PS5 vs PS7 status code differences
             if ($PSVersionTable.PSVersion.Major -ge 6) {
                 $StatusCode = $_.Exception.Response.StatusCode.value__
             } else {
@@ -121,9 +138,8 @@ for ($i = 1; $i -le 68; $i++) {
             }
         }
 
-        # 404 indicates the user is already not a member of the Safe
-        if ($StatusCode -eq 404) {
-            Write-Host "  [-] $MemberName is not a member of the safe." -ForegroundColor Yellow
+        if ($StatusCode -eq 409) {
+            Write-Host "  [-] $MemberName is already a member of the safe." -ForegroundColor Yellow
         }
         else {
             $ErrMsg = ""
@@ -136,10 +152,10 @@ for ($i = 1; $i -le 68; $i++) {
                 $ErrMsg = $_.Exception.Message
             }
 
-            Write-Host "  [!] Failed to remove $MemberName : HTTP $StatusCode - $ErrMsg" -ForegroundColor Red
+            Write-Host "  [!] Failed to add $MemberName : HTTP $StatusCode - $ErrMsg" -ForegroundColor Red
             $ErrorCount++
         }
     }
 }
 
-Write-Host "[*] Finished processing. Successfully removed: $SuccessCount, Errors/Not Found: $ErrorCount" -ForegroundColor Cyan
+Write-Host "[*] Finished processing. Successfully added: $SuccessCount, Errors: $ErrorCount" -ForegroundColor Cyan
